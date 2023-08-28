@@ -314,7 +314,7 @@ bool IdentifyEXE(const char * procName, bool isEditor, std::string * dllSuffix, 
 
 	if (isNoGore)
 	{
-		PrintLoaderError("You have the german NoGore version of FalloutNV.exe which is not supported by NVSE. To fix this search online for a \"German Uncut Fallout New Vegas Patch\" or request a different EXE from Steam customer support.");
+		PrintLoaderError("You have the german No Gore version of FalloutNV.exe which is not supported by xNVSE. To fix this search online for a \"German Uncut Fallout New Vegas Patch\" or request a different EXE from Steam customer support.");
 		return false;
 	}
 
@@ -369,7 +369,7 @@ bool IdentifyEXE(const char * procName, bool isEditor, std::string * dllSuffix, 
 				break;
 
 			default:
-				PrintLoaderError("You have an unknown version of the CS. Please check http://nvse.silverlock.org to make sure you're using the latest version of NVSE. (version = %016I64X)", version);
+				PrintLoaderError("You have an unknown version of the GECK. Please check https://github.com/xNVSE/NVSE/releases to make sure you're using the latest version of xNVSE. (version = %016I64X)", version);
 				break;
 		}
 	}
@@ -377,15 +377,16 @@ bool IdentifyEXE(const char * procName, bool isEditor, std::string * dllSuffix, 
 	{
 		if(isUPX)
 		{
-			PrintLoaderError("Packed versions of Fallout are not supported.");
+			PrintLoaderError("Packed versions of the game are not supported.");
 		}
 		else
 		{
 			const UInt64 kCurVersion = 0x000100040000020D;	// 1.4.0.525
+			const UInt64 kEpicVersion = 0x000100040000053A;	// 1.4.0.1338
 
 			if(version < kCurVersion)
 			{
-				PrintLoaderError("Please update to the latest version of Fallout.");
+				PrintLoaderError("You are most likely using a pirated copy of the game which is unsupported by xNVSE. Please use a Steam or GOG copy.");
 			}
 			else if(version == kCurVersion)
 			{
@@ -404,9 +405,13 @@ bool IdentifyEXE(const char * procName, bool isEditor, std::string * dllSuffix, 
 					result = true;
 				}
 			}
+			else if (version == kEpicVersion)
+			{
+				PrintLoaderError("You are using the Epic Games Store version of the game which is unsupported by xNVSE. You may use this patcher to make your exe compatible: https://www.nexusmods.com/newvegas/mods/81281");
+			}
 			else
 			{
-				PrintLoaderError("You are using a newer version of Fallout than this version of NVSE supports. If the patch to this version just came out, please be patient while we update our code. In the meantime, please check http://nvse.silverlock.org to make sure you're using the latest version of NVSE. (version = %016I64X %08X)", version, PACKED_NVSE_VERSION);
+				PrintLoaderError("You are using a newer version of Fallout than this version of xNVSE supports. If the patch to this version just came out, please be patient while we update our code. In the meantime, please check https://github.com/xNVSE/NVSE to make sure you're using the latest version of xNVSE. (version = %016I64X %08X)", version, PACKED_NVSE_VERSION);
 			}
 		}
 	}

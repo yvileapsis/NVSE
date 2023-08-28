@@ -18,6 +18,12 @@ static ParamInfo kParams_OneOptionalInt[1] =
 	{	"int", kParamType_Integer, 1 }, 
 };
 
+static ParamInfo kParams_TwoOptionalInts[2] =
+{
+	{	"int", kParamType_Integer, 1 },
+	{	"int", kParamType_Integer, 1 },
+};
+
 static ParamInfo kParams_OneInt_OneOptionalInt[2] =
 {
 	{	"int", kParamType_Integer, 0 },
@@ -60,6 +66,12 @@ static ParamInfo kParams_OneObjectID[1] =
 
 static ParamInfo kParams_OneOptionalObjectID[1] =
 {
+	{	"item", kParamType_ObjectID, 1},
+};
+
+static ParamInfo kParams_OneObjectID_OneOptionalObjectID[2] =
+{
+	{	"item", kParamType_ObjectID, 0},
 	{	"item", kParamType_ObjectID, 1},
 };
 
@@ -241,6 +253,11 @@ static ParamInfo kParams_OneOptionalObjectRef[1] =
 	{	"ref", kParamType_ObjectRef, 1},
 };
 
+static ParamInfo kParams_OneObjectRef[1] =
+{
+	{	"ref", kParamType_ObjectRef, 0},
+};
+
 static ParamInfo kParams_OneIntOneOptionalObjectRef[2] =
 {
 	{	"flag",		kParamType_Integer,	0	},
@@ -353,6 +370,29 @@ static ParamInfo kParams_OneIntOneForm[2] =
 {
 	{	"index",	kParamType_Integer, 0	}, 
 	{	"form",		kParamType_AnyForm,	0	},
+};
+
+static ParamInfo kParams_SevenOptionalInts[7] =
+{
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+};
+
+static ParamInfo kParams_EightOptionalInts[8] =
+{
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
+		{	"int",		kParamType_Integer, 1	},
+	{	"int",		kParamType_Integer, 1	},
 };
 
 static ParamInfo kParams_OneIntOneOptionalForm[2] =

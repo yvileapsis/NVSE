@@ -28,3 +28,12 @@ DEFINE_CMD_ALT(OutputLocalMapPicturesOverride, OLMPOR, "identical to the OutputL
 DEFINE_CMD_ALT(SetOutputLocalMapPicturesGrids, SetOLMPGrids, sets the value with which to override uGridsToLoad when generating local maps with OLMPOR, 0, 1, kParams_OneInt);
 
 DEFINE_COMMAND(AddSpellNS, identical to AddSpell but without the UI message, 0, 1, kParams_OneSpellItem);
+
+DEFINE_CMD_ALIAS(DisablePlayerControlsAlt, DPCAlt, "Per-mod version with added args", false, kParams_SevenOptionalInts);
+DEFINE_CMD_ALIAS(EnablePlayerControlsAlt, EPCAlt, "Per-mod version with added args", false, kParams_SevenOptionalInts);
+DEFINE_CMD_ALIAS(GetPlayerControlsDisabledAlt, GPCDAlt, "", false, kParams_EightOptionalInts);
+
+// Ex versions simply extracts a bitfield instead of multiple args
+DEFINE_CMD_ALIAS(DisablePlayerControlsAltEx, DPCEx, "Per-mod version with added args", false, kParams_OneOptionalInt);
+DEFINE_CMD_ALIAS(EnablePlayerControlsAltEx, EPCEx, "Per-mod version with added args", false, kParams_OneOptionalInt);
+DEFINE_CMD_ALIAS(GetPlayerControlsDisabledAltEx, GPCDEx, "", false, kParams_TwoOptionalInts);

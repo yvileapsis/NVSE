@@ -27,11 +27,15 @@
 
 #include "GameData.h"
 #include "UnitTests.h"
+#include "GameUI.h"
 
 static void HandleMainLoopHook(void);
 
 static const UInt32 kMainLoopHookPatchAddr	= 0x0086B386;	// 7th call BEFORE first call to Sleep in oldWinMain	// 006EEC15 looks best for FO3
 static const UInt32 kMainLoopHookRetnAddr	= 0x0086B38B;
+
+static constexpr UInt32 kConsoleOpenGlobalAddr = 0x11DEA2E;
+static constexpr UInt32 kIsInPauseFadeGlobalAddr = 0x11DEA2D;
 
 __declspec(naked) void MainLoopHook()
 {
@@ -63,7 +67,10 @@ float g_gameSecondsPassed = 0;
 
 bool IsGamePaused()
 {
-	return IsConsoleMode() || *(Menu**)0x11DAAC0; // g_startMenu (credits to Stewie)
+	bool isMainOrPauseMenuOpen = *(Menu**)0x11DAAC0; // g_startMenu, credits to lStewieAl
+	auto* console = ConsoleManager::GetSingleton();
+
+	return isMainOrPauseMenuOpen|| console->IsConsoleOpen();
 }
 
 // xNVSE 6.1
@@ -81,7 +88,9 @@ void HandleDelayedCall(float timeDelta, bool isMenuMode)
 		if (!iter->ShouldRun(isMenuMode, isGamePaused))
 		{
 			iter->time += timeDelta;
+			// intentional fallthrough in case the delay was 0
 		}
+
 		if (g_gameSecondsPassed >= iter->time)
 		{
 			ArrayElementArgFunctionCaller caller(iter->script, iter->args, iter->thisObj);
@@ -110,7 +119,7 @@ void HandleCallAfterFramesScripts(bool isMenuMode)
 		if (!iter->ShouldRun(isMenuMode, isGamePaused))
 		{
 			++iter;
-			continue;
+			continue; // ignore the possibility of callback setup to wait 0 frames (just use regular Call)
 		}
 
 		if (--framesLeft <= 0)
@@ -216,7 +225,9 @@ void HandleCallForScripts(float timeDelta, bool isMenuMode)
 		if (!iter->ShouldRun(isMenuMode, isGamePaused))
 		{
 			iter->time += timeDelta;
+			// intentional fallthrough in case the delay was 0
 		}
+
 		if (g_gameSecondsPassed < iter->time)
 		{
 			ArrayElementArgFunctionCaller caller(iter->script, iter->args, iter->thisObj);
@@ -272,6 +283,207 @@ void HandleCallWhilePerSecondsScripts(float timeDelta, bool isMenuMode)
 			}
 		}
 		++iter;
+	}
+}
+
+namespace DisablePlayerControlsAlt
+{
+	std::map<ModID, flags_t> g_disabledFlagsPerMod;
+	flags_t g_disabledControls = 0;
+
+	flags_t CondenseVanillaFlagArgs(UInt32 movementFlag, UInt32 pipboyFlag, UInt32 fightingFlag, 
+		UInt32 POVFlag, UInt32 lookingFlag, UInt32 rolloverTextFlag, UInt32 sneakingFlag)
+	{
+		// Copy the order that flags are arranged from vanilla (doesn't 100% match the order of args passed to the func).
+		return static_cast<flags_t>(
+			  (movementFlag << 0)
+			| (lookingFlag << 1)
+			| (pipboyFlag << 2)
+			| (fightingFlag << 3)
+			| (POVFlag << 4)
+			| (rolloverTextFlag << 5)
+			| (sneakingFlag << 6)
+			);
+	}
+
+	void ApplyImmediateDisablingEffects(flags_t changedFlagsForMod)
+	{
+		auto* player = PlayerCharacter::GetSingleton();
+
+		// Check if the changed (re-enabled controls) flags are actually changing current flags.
+		// Thus, remove the control-disabling bits that are already on.
+		flags_t realFlagChanges = changedFlagsForMod & ~(g_disabledControls | static_cast<flags_t>(player->disabledControlFlags));
+		if (!realFlagChanges)
+			return;
+
+		// Copy code at 0x95F590 to force out of sneak etc
+		if ((realFlagChanges & kFlag_Movement) != 0)
+		{
+			HUDMainMenu::UpdateVisibilityState(HUDMainMenu::kHUDState_PlayerDisabledControls);
+		}
+		else
+		{
+			// important for updating RolloverText and such at 0x771972
+			HUDMainMenu::UpdateVisibilityState(HUDMainMenu::kHUDState_RECALCULATE);
+		}
+
+		if ((realFlagChanges & kFlag_Fighting) != 0)
+			player->SetWantsWeaponOut(0);
+
+		if ((realFlagChanges & kFlag_POV) != 0)
+		{
+			player->bThirdPerson = false;
+			if (player->playerNode)
+				player->UpdateCamera(0, 0);
+			else
+			{
+				float& g_fThirdPersonZoomHeight = *reinterpret_cast<float*>(0x11E0768);
+				g_fThirdPersonZoomHeight = 0.0;
+			}
+		}
+
+		if ((realFlagChanges & kFlag_Sneaking) != 0)
+		{
+			// force out of sneak by removing sneak movement flag
+			ThisStdCall(0x9EA3E0, PlayerCharacter::GetSingleton()->actorMover, (player->GetMovementFlags() & ~0x400));
+		}
+	}
+
+	void ApplyImmediateEnablingEffects(flags_t changedFlagsForMod)
+	{
+		// changedFlagsForMod = the control-disabling flags that will be removed, aka controls being re-enabled.
+		// Thus, only keep a control-disabling bit if the bit was on.
+		flags_t realFlagChanges = changedFlagsForMod & g_disabledControls;
+
+		// Vanilla disabled control flags won't be overwritten, so if vanilla still has it disabled it'll stay that way.
+		realFlagChanges &= ~static_cast<flags_t>(PlayerCharacter::GetSingleton()->disabledControlFlags);
+
+		// If re-enabling movement control...
+		if ((realFlagChanges & kFlag_Movement) != 0)
+			HUDMainMenu::UpdateVisibilityState(HUDMainMenu::kHUDState_RECALCULATE);
+	}
+
+	void ResetOnLoad()
+	{
+		g_disabledFlagsPerMod.clear();
+		g_disabledControls = 0;
+		ApplyImmediateEnablingEffects(kAllFlags);
+	}
+
+	// Logical OR the vanilla flags with ours
+	__HOOK ModifyPlayerControlFlags()
+	{
+		static const UInt32 ContinueFuncAddr = 0x5A0401;
+		_asm
+		{
+			mov     eax, [ebp - 4]
+			movzx   ecx, byte ptr [eax + 0x680]
+			movzx   edx, g_disabledControls
+			AND		edx, kVanillaFlags // prevent our custom flags from being added to vanilla pcControlFlags here.
+			OR		ecx, edx
+			jmp		ContinueFuncAddr
+		}
+	}
+
+	CallDetour g_PreventAttackDetour;
+	bool __fastcall MaybePreventPlayerAttacking(Actor* player, void* edx, UInt32 animGroupId)
+	{
+		if ((g_disabledControls & kFlag_Attacking) != 0)
+			return false;
+
+		// actually fire the weapon
+		return ThisStdCall<bool>(g_PreventAttackDetour.GetOverwrittenAddr(), player, animGroupId);
+	}
+
+	CallDetour g_PreventVATSDetour;
+	signed int __fastcall GetControlState_VATSHook(OSInputGlobals* self, void* edx, int key, int state)
+	{
+		auto defaultResult = ThisStdCall<signed int>(g_PreventVATSDetour.GetOverwrittenAddr(), self, key, state);
+		if ((g_disabledControls & kFlag_EnterVATS) != 0)
+			return 0;
+		return defaultResult;
+	}
+
+	CallDetour g_PreventJumpingDetour;
+	signed int __fastcall GetControlState_JumpingHook(OSInputGlobals* self, void* edx, int key, int state)
+	{
+		auto defaultResult = ThisStdCall<signed int>(g_PreventJumpingDetour.GetOverwrittenAddr(), self, key, state);
+		if ((g_disabledControls & kFlag_Jumping) != 0)
+			return 0;
+		return defaultResult;
+	}
+
+	// To prevent aiming/blocking, need 2 detours to handle 2 function calls:
+	// ...one for OSInputGlobals::GetControlState -> IsPressed, another for isHeld.
+	CallDetour g_PreventAimingOrBlockingDetour_IsPressed;
+	signed int __fastcall GetControlState_Aiming_IsPressedHook(OSInputGlobals* self, void* edx, int key, int state)
+	{
+		auto defaultResult = ThisStdCall<signed int>(g_PreventAimingOrBlockingDetour_IsPressed.GetOverwrittenAddr(), self, key, state);
+		if ((g_disabledControls & kFlag_AimingOrBlocking) != 0)
+			return 0;
+		return defaultResult;
+	}
+
+	CallDetour g_PreventAimingOrBlockingDetour_IsHeld;
+	signed int __fastcall GetControlState_Aiming_IsHeldHook(OSInputGlobals* self, void* edx, int key, int state)
+	{
+		auto defaultResult = ThisStdCall<signed int>(g_PreventAimingOrBlockingDetour_IsHeld.GetOverwrittenAddr(), self, key, state);
+		if ((g_disabledControls & kFlag_AimingOrBlocking) != 0)
+			return 0;
+		return defaultResult;
+	}
+
+	__HOOK MaybePreventRunningForControllers()
+	{
+		static const UInt32 NormalRetnAddr = 0x941708,
+			PreventRunningAddr = 0x941792;
+		_asm
+		{
+			movzx	eax, g_disabledControls
+			AND		eax, kFlag_Running
+			test	eax, eax
+			jz		DoRegular
+			// prevent activation
+			jmp		PreventRunningAddr
+		DoRegular :
+			// go back to the code we jumped from and slightly overwrote
+			mov     edx, [ebp - 0x18]
+			mov     eax, [edx + 0x68]
+			jmp		NormalRetnAddr
+		}
+	}
+
+	CallDetour g_PreventRunningForNonController;
+	double __fastcall MaybePreventRunningForNonController(Actor* self, void* edx)
+	{
+		auto* _ebp = GetParentBasePtr(_AddressOfReturnAddress(), false);
+		auto& moveFlags = *reinterpret_cast<UInt16*>(_ebp - 0x6C);
+
+		if ((g_disabledControls & kFlag_Running) != 0)
+			moveFlags &= ~0x200; // remove kMoveFlag_Running
+
+		auto result = ThisStdCall<double>(g_PreventRunningForNonController.GetOverwrittenAddr(), self);
+		return result;
+	}
+
+	void WriteHooks()
+	{
+		WriteRelJump(0x5A03F7, (UInt32)ModifyPlayerControlFlags);
+		g_PreventAttackDetour.WriteRelCall(0x949CF1, (UInt32)MaybePreventPlayerAttacking);
+
+		// Use detour since "GetControlState" funcs could be popular hook spots
+		g_PreventVATSDetour.WriteRelCall(0x942884, (UInt32)GetControlState_VATSHook);
+		g_PreventJumpingDetour.WriteRelCall(0x94215F, (UInt32)GetControlState_JumpingHook);
+		g_PreventAimingOrBlockingDetour_IsPressed.WriteRelCall(0x941F4F, (UInt32)GetControlState_Aiming_IsPressedHook);
+		g_PreventAimingOrBlockingDetour_IsHeld.WriteRelCall(0x941F5F, (UInt32)GetControlState_Aiming_IsHeldHook);
+
+		WriteRelJump(0x941702, (UInt32)MaybePreventRunningForControllers);
+
+		// hooks Actor::GetMovementSpeed() call
+		g_PreventRunningForNonController.WriteRelCall(0x941B60, (UInt32)MaybePreventRunningForNonController);
+
+		// todo: maybe add hook+flag to disable grabbing @ 0x95F6DE
+		// todo: maybe add hook+flag to disable AmmoSwap at 0x94098B
 	}
 }
 
@@ -565,6 +777,8 @@ void Hook_Gameplay_Init(void)
 	if (GetNVSEConfigOption_UInt32("DEBUG", "Print", &print) && print)
 		Hook_DebugPrint();
 #endif
+
+	DisablePlayerControlsAlt::WriteHooks();
 }
 
 void SetRetainExtraOwnership(bool bRetain)

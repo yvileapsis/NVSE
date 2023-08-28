@@ -119,9 +119,10 @@ DEFINE_CMD(GetStringGameSetting, returns the value of a string game setting, 0, 
 
 DEFINE_CMD(GetStringIniSetting, returns the value of a string ini setting, 0, kParams_OneString);
 
-DEFINE_CMD(SetStringGameSettingEX, sets a string game setting, 0, kParams_FormatString);
+DEFINE_CMD(SetStringGameSettingEX_DEPRECATED, sets a string game setting, 0, kParams_FormatString);
 
-DEFINE_CMD(SetStringIniSetting, sets a string ini setting, 0, kParams_FormatString);
+DEFINE_CMD(SetStringIniSetting_DEPRECATED, sets a string ini setting, 0, kParams_FormatString);
+DEFINE_CMD(SetStringIniSetting, sets a string ini setting, 0, kParams_TwoStrings);
 
 DEFINE_CMD(GetModelPath, returns the model path of an object, 0, kParams_OneOptionalForm);
 
@@ -219,13 +220,14 @@ static ParamInfo kNVSEParams_OneString_TwoOptionalInts[3] =
 
 DEFINE_COMMAND_EXP(ToNumber, translates a string to a number, 0, kNVSEParams_OneString_TwoOptionalInts);
 
-static ParamInfo kNVSEParams_TwoStrings[2] =
+static ParamInfo kNVSEParams_TwoStrings_OneOptionalBool[3] =
 {
 	{	"string",		kNVSEParamType_String,	0	},
 	{	"string",		kNVSEParamType_String,	0	},
+	{	"bool",			kNVSEParamType_Boolean,	1	},
 };
 
-DEFINE_COMMAND_EXP(sv_Split, split a string into substrings returning an array, 0, kNVSEParams_TwoStrings);
+DEFINE_COMMAND_EXP(sv_Split, "split a string into substrings returning an array", 0, kNVSEParams_TwoStrings_OneOptionalBool);
 
 DEFINE_CMD_ALT_EXP(GetFalloutDirectory, GetFalloutDir, returns the path to the Fallout directory, 0, NULL);
 

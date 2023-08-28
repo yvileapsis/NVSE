@@ -2623,6 +2623,23 @@ bool Cmd_GetAmmoConsumedPercent_Eval(COMMAND_ARGS_EVAL)
 	return true;
 }
 
+bool Cmd_SetAmmoConsumedPercent_Execute(COMMAND_ARGS)
+{
+	float fNewPerc;
+	TESForm* form = NULL;
+	ExtractArgsEx(EXTRACT_ARGS_EX, &fNewPerc, &form);
+	if (!form) {
+		if (!thisObj) return true;
+		form = thisObj->baseForm;
+	}
+
+	TESAmmo* pAmmo = DYNAMIC_CAST(form, TESForm, TESAmmo);
+	if (pAmmo) {
+		pAmmo->ammoPercentConsumed = fNewPerc;
+	}
+	return true;
+}
+
 bool Cmd_GetAmmoCasing_Execute(COMMAND_ARGS)
 {
 	*result = 0;
@@ -2715,21 +2732,42 @@ bool Cmd_IsEquippedAmmoInList_Execute(COMMAND_ARGS) {
 	return Cmd_HasAmmoEquipped_Execute(PASS_COMMAND_ARGS);
 }
 
+bool Cmd_GetWeaponCanUseAmmo_Eval(COMMAND_ARGS_EVAL) {
+	*result = 0;
+	TESObjectWEAP* weap = nullptr;
+	if (arg2)
+		weap = static_cast<TESObjectWEAP*>(arg2);
+	else if (thisObj)
+		weap = static_cast<TESObjectWEAP*>(thisObj->baseForm);
+
+	if (weap) {
+		auto* ammoOrList = static_cast<TESForm*>(arg1);
+		*result = weap->ammo.ammo == ammoOrList;
+		if (!*result)
+		{
+			if (auto* pAmmoList = DYNAMIC_CAST(weap->ammo.ammo, TESForm, BGSListForm);
+				pAmmoList && ammoOrList->typeID == kFormType_TESAmmo)
+			{
+				*result = pAmmoList->GetIndexOf(ammoOrList) != eListInvalid;
+			}
+		}
+	}
+
+	return true;
+}
+bool Cmd_GetWeaponCanUseAmmo_Execute(COMMAND_ARGS) {
+	*result = 0;
+	TESForm* ammoOrList;
+	TESObjectWEAP* baseWeapon = nullptr;
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &ammoOrList, &baseWeapon))
+		return true;
+	return Cmd_GetWeaponCanUseAmmo_Eval(thisObj, ammoOrList, baseWeapon, result);
+}
+
 bool Cmd_GetEquippedWeaponCanUseAmmo_Eval(COMMAND_ARGS_EVAL) {
 	*result = 0;
 	if (thisObj) {
-		auto* ammoOrList = static_cast<TESForm*>(arg1);
-		if (const auto* weap = static_cast<Actor*>(thisObj)->GetEquippedWeapon()) {
-			*result = weap->ammo.ammo == ammoOrList;
-			if (!*result)
-			{
-				if (auto* pAmmoList = DYNAMIC_CAST(weap->ammo.ammo, TESForm, BGSListForm);
-					pAmmoList && ammoOrList->typeID == kFormType_TESAmmo)
-				{
-					*result = pAmmoList->GetIndexOf(ammoOrList) != eListInvalid;
-				}
-			}
-		}
+		return Cmd_GetWeaponCanUseAmmo_Eval(nullptr, arg1, static_cast<Actor*>(thisObj)->GetEquippedWeapon(), result);
 	}
 	return true;
 }
@@ -3229,7 +3267,6 @@ bool Cmd_PickOneOf_Execute(COMMAND_ARGS) {
 	UInt32* refResult = (UInt32*)result;
 	*refResult = 0;
 	BGSListForm* pFormList = NULL;
-	tList<TESForm> present;
 	Actor* pActor = NULL;
 	SInt32 count;
 	UInt32 random;
@@ -3239,22 +3276,22 @@ bool Cmd_PickOneOf_Execute(COMMAND_ARGS) {
 	if (!pActor)
 		return true;
 	if (ExtractArgs(EXTRACT_ARGS, &pFormList)) {
-		present.Init();
+		std::vector<TESForm*> present;
 		for (int i = 0; i < pFormList->Count(); i++) {
 			GetItemByRefID(thisObj, pFormList->GetNthForm(i)->refID, &count);
 			if (count > 0)
-				present.AddAt(pFormList->GetNthForm(i), 0);
+				present.push_back(pFormList->GetNthForm(i));
 		}
-		switch (present.Count())
+		switch (present.size())
 		{
 			case 0:
 				break;
 			case 1:
-				*refResult = present.GetNthItem(0)->refID;
+				*refResult = present.at(0)->refID;
 				break;
 			default:
-				random = MersenneTwister::genrand_real2() * (present.Count());
-				*refResult = present.GetNthItem(random)->refID;
+				random = MersenneTwister::genrand_real2() * (present.size());
+				*refResult = present.at(random)->refID;
 		}
 	}
 	return true;

@@ -1589,13 +1589,13 @@ void CommandTable::AddCommandsV4()
 	ADD_CMD(SetNthFactionRankNameEX);
 
 	ADD_CMD_RET(GetStringGameSetting, kRetnType_String);
-	ADD_CMD(SetStringGameSettingEX);
+	ADD_CMD(SetStringGameSettingEX_DEPRECATED);
 
 	// 4.2 beta 02
 	ADD_CMD_RET(GetRace, kRetnType_Form);
 	ADD_CMD_RET(GetRaceName, kRetnType_String);
 	ImportConsoleCommand("SCOF");
-	ADD_CMD(PickOneOf);
+	ADD_CMD_RET(PickOneOf, kRetnType_Form);
 
 	// 4.2 beta 03 alpha 5
 	ADD_CMD(IsPlayerSwimming);
@@ -1651,7 +1651,7 @@ void CommandTable::AddCommandsV4()
 	ADD_CMD(SetRefVariable);
 	ImportConsoleCommand("ShowVars"); // requires ConsoleEcho to be turned on!
 	ADD_CMD_RET(GetStringIniSetting, kRetnType_String);
-	ADD_CMD(SetStringIniSetting);
+	ADD_CMD(SetStringIniSetting_DEPRECATED);
 
 	// 4.5 beta 07
 
@@ -1867,6 +1867,23 @@ void CommandTable::AddCommandsV6()
 	ADD_CMD(GetEquippedWeaponUsesAmmoList);
 	ADD_CMD(IsInventoryRef);
 	ADD_CMD(DebugPrintVar);
+
+	// 6.3 beta 01
+	ADD_CMD(SetStringIniSetting); // fixed version
+	ADD_CMD(GetHeadingAngleX);
+	ADD_CMD(GetWeaponCanUseAmmo);
+	ADD_CMD(SetAmmoConsumedPercent);
+
+	// 6.3 beta 02
+	ADD_CMD(DisablePlayerControlsAlt);
+	ADD_CMD(EnablePlayerControlsAlt);
+	ADD_CMD(GetPlayerControlsDisabledAlt);
+	ADD_CMD(DisablePlayerControlsAltEx);
+	ADD_CMD(EnablePlayerControlsAltEx);
+	ADD_CMD(GetPlayerControlsDisabledAltEx);
+
+	// 6.3 beta 03
+	ADD_CMD_RET(CopyIRAlt, kRetnType_Form);
 }
 
 namespace PluginAPI

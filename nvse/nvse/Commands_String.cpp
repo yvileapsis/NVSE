@@ -10,6 +10,7 @@
 #include "GameSettings.h"
 #include "Utilities.h"
 #include <format>
+#include <ranges>
 
 //////////////////////////
 // Utility commands
@@ -461,12 +462,13 @@ bool Cmd_GetStringIniSetting_Execute(COMMAND_ARGS)
 }
 
 // setting name included in format string i.e. "sSomeSetting|newSettingValue"
-bool Cmd_SetStringGameSettingEX_Execute(COMMAND_ARGS)
+// Deprecated because it sets INI settings instead of gamesettings
+bool Cmd_SetStringGameSettingEX_DEPRECATED_Execute(COMMAND_ARGS)
 {
 	char fmtString[kMaxMessageLength];
 	*result = 0;
 
-	if (ExtractFormatStringArgs(0, fmtString, PASS_FMTSTR_ARGS, kCommandInfo_SetStringGameSettingEX.numParams))
+	if (ExtractFormatStringArgs(0, fmtString, PASS_FMTSTR_ARGS, kCommandInfo_SetStringGameSettingEX_DEPRECATED.numParams))
 	{
 		UInt32 pipePos = std::string(fmtString).find(GetSeparatorChar(scriptObj));
 		if (pipePos != -1)
@@ -488,12 +490,13 @@ bool Cmd_SetStringGameSettingEX_Execute(COMMAND_ARGS)
 }
 
 // setting name included in format string i.e. "sSomeSetting|newSettingValue"
-bool Cmd_SetStringIniSetting_Execute(COMMAND_ARGS)
+// Deprecated because it sets GameSettings instead of INI settings.
+bool Cmd_SetStringIniSetting_DEPRECATED_Execute(COMMAND_ARGS)
 {
 	char fmtString[kMaxMessageLength];
 	*result = 0;
 
-	if (ExtractFormatStringArgs(0, fmtString, PASS_FMTSTR_ARGS, kCommandInfo_SetStringGameSettingEX.numParams))
+	if (ExtractFormatStringArgs(0, fmtString, PASS_FMTSTR_ARGS, kCommandInfo_SetStringIniSetting_DEPRECATED.numParams))
 	{
 		UInt32 pipePos = std::string(fmtString).find(GetSeparatorChar(scriptObj));
 		if (pipePos != -1)
@@ -503,13 +506,40 @@ bool Cmd_SetStringIniSetting_Execute(COMMAND_ARGS)
 
 			Setting *setting = NULL;
 			GameSettingCollection *gmsts = GameSettingCollection::GetSingleton();
-			if (gmsts && gmsts->GetGameSetting(fmtString, &setting) && setting && setting->GetType() == Setting::kSetting_String)
+			if (gmsts && gmsts->GetGameSetting(fmtString, &setting))
+			{
+				if (setting && setting->GetType() == Setting::kSetting_String)
+				{
+					setting->Set(newValue);
+					*result = 1;
+				}
+
+			}
+		}
+	}
+
+	return true;
+}
+
+bool Cmd_SetStringIniSetting_Execute(COMMAND_ARGS)
+{
+	char settingName[kMaxMessageLength];
+	char newValue[kMaxMessageLength];
+	*result = 0;
+
+	if (ExtractArgs(EXTRACT_ARGS, &settingName, &newValue))
+	{
+		Setting* setting;
+		if (GetIniSetting(settingName, &setting))
+		{
+			if (setting->GetType() == Setting::kSetting_String)
 			{
 				setting->Set(newValue);
-				;
 				*result = 1;
 			}
 		}
+		else if (IsConsoleMode())
+			Console_Print("SetStringIniSetting >> SETTING NOT FOUND");
 	}
 
 	return true;
@@ -984,16 +1014,41 @@ bool Cmd_sv_Split_Execute(COMMAND_ARGS)
 	*result = arr->ID();
 
 	ExpressionEvaluator eval(PASS_COMMAND_ARGS);
-	if (eval.ExtractArgs() && eval.NumArgs() == 2 && eval.Arg(0)->CanConvertTo(kTokenType_String) && eval.Arg(1)->CanConvertTo(kTokenType_String))
+	if (eval.ExtractArgs() && eval.NumArgs() >= 2 && eval.Arg(0)->CanConvertTo(kTokenType_String) && eval.Arg(1)->CanConvertTo(kTokenType_String))
 	{
-		Tokenizer tokens(eval.Arg(0)->GetString(), eval.Arg(1)->GetString());
-		std::string token;
-
-		double idx = 0;
-		while (tokens.NextToken(token) != -1)
+		// If true, assume that the "delimiters" arg is in fact a single long delimiter.
+		// For example, if the delims are "&+", then it will only split when encountering "&+", not when encountering "&" or "+".
+		bool useSingleDelimiterString = false;
+		if (eval.NumArgs() >= 3)
 		{
-			arr->SetElementString(idx, token.c_str());
-			idx += 1;
+			useSingleDelimiterString = eval.Arg(2)->GetBool();
+		}
+
+		std::string_view baseString = eval.Arg(0)->GetString();
+		std::string_view delims = eval.Arg(1)->GetString();
+
+		if (useSingleDelimiterString)
+		{
+			double idx = 0;
+			for (const auto word : std::views::split(baseString, delims))
+			{
+				// with string_view's C++23 range constructor:
+				arr->SetElementString(idx, std::string_view(word));
+				idx += 1;
+			}
+		}
+		else
+		{
+			// old regular code
+			Tokenizer tokens(baseString.data(), delims.data());
+			std::string token;
+
+			double idx = 0;
+			while (tokens.NextToken(token) != -1)
+			{
+				arr->SetElementString(idx, token.c_str());
+				idx += 1;
+			}
 		}
 	}
 

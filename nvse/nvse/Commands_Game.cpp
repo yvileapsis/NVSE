@@ -372,3 +372,167 @@ bool Cmd_AddSpellNS_Execute(COMMAND_ARGS)
 	return RunCommand_NS(PASS_COMMAND_ARGS, Cmd_AddSpell_Execute);
 }
 
+namespace DisablePlayerControlsAlt
+{
+	void Cmd_DisablePlayerControlsAlt_Call(flags_t flagsToAddForMod, ModID modId)
+	{
+		if (auto iter = g_disabledFlagsPerMod.find(modId);
+			iter != g_disabledFlagsPerMod.end())
+		{
+			auto flagsModHad = iter->second;
+			flags_t realFlagChanges = flagsToAddForMod & ~flagsModHad;
+			ApplyImmediateDisablingEffects(realFlagChanges);
+
+			// update disabled flags (might just be re-applying the same disabled flags)
+			iter->second |= flagsToAddForMod;
+		}
+		else
+		{
+			ApplyImmediateDisablingEffects(flagsToAddForMod);
+			g_disabledFlagsPerMod.emplace(modId, flagsToAddForMod);
+		}
+		g_disabledControls |= flagsToAddForMod;
+	}
+}
+
+bool Cmd_DisablePlayerControlsAlt_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	auto [success, flagsToAddForMod] = ExtractArgsForEnableOrDisablePlayerControls<false>(PASS_COMMAND_ARGS);
+	if (!success || !flagsToAddForMod)
+		return true;
+
+	Cmd_DisablePlayerControlsAlt_Call(flagsToAddForMod, scriptObj->GetOverridingModIdx());
+	return true;
+}
+
+// Ex version simply extracts a bitfield instead of multiple args
+bool Cmd_DisablePlayerControlsAltEx_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	UInt32 flagsToAddForMod = DisablePlayerControlsAlt::kVanillaDefaultDisableFlags;
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &flagsToAddForMod))
+		return true;
+
+	Cmd_DisablePlayerControlsAlt_Call(flagsToAddForMod, scriptObj->GetOverridingModIdx());
+	return true;
+}
+
+namespace DisablePlayerControlsAlt
+{
+	void Cmd_EnablePlayerControlsAlt_Call(flags_t flagsToRemoveForMod, ModID modId)
+	{
+		if (auto foundIter = g_disabledFlagsPerMod.find(modId);
+			foundIter != g_disabledFlagsPerMod.end())
+		{
+			auto flagsModHad = foundIter->second;
+			ApplyImmediateEnablingEffects(flagsModHad);
+
+			// update disabled flags (might just be re-applying the same disabled flags)
+			foundIter->second &= ~flagsToRemoveForMod;
+			if (!foundIter->second)
+				g_disabledFlagsPerMod.erase(foundIter);
+
+			g_disabledControls = 0;
+
+			// Re-form g_disabledControls based on all the chached per-mod disabled flags 
+			for (auto const& loopIter : g_disabledFlagsPerMod)
+			{
+				g_disabledControls |= loopIter.second;
+			}
+		}
+	}
+}
+
+bool Cmd_EnablePlayerControlsAlt_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	auto [success, flagsToRemoveForMod] = ExtractArgsForEnableOrDisablePlayerControls<true>(PASS_COMMAND_ARGS);
+	if (!success || !flagsToRemoveForMod)
+		return true;
+
+	Cmd_EnablePlayerControlsAlt_Call(flagsToRemoveForMod, scriptObj->GetOverridingModIdx());
+	return true;
+}
+
+// Ex version simply extracts a bitfield instead of multiple args
+bool Cmd_EnablePlayerControlsAltEx_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	UInt32 flagsToRemoveForMod = DisablePlayerControlsAlt::kAllFlags;
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &flagsToRemoveForMod))
+		return true;
+
+	Cmd_EnablePlayerControlsAlt_Call(flagsToRemoveForMod, scriptObj->GetOverridingModIdx());
+	return true;
+}
+
+namespace DisablePlayerControlsAlt
+{
+	void Cmd_GetPlayerControlsDisabledAlt_Call(UInt32 disabledHow, flags_t flagsToCheck, ModID modId, double* result)
+	{
+		// Check if any of the specified player controls are currently disabled by calling mod
+		if (disabledHow == 0)
+		{
+			if (auto foundIter = g_disabledFlagsPerMod.find(modId);
+				foundIter != g_disabledFlagsPerMod.end())
+			{
+				auto flagsModHas = foundIter->second;
+				*result = (flagsModHas & flagsToCheck) != 0;
+			}
+		}
+		else
+		{
+			*result = (g_disabledControls & flagsToCheck) != 0;
+			if (disabledHow == 2)
+				*result = *result || (PlayerCharacter::GetSingleton()->disabledControlFlags & flagsToCheck) != 0;
+		}
+	}
+}
+
+bool Cmd_GetPlayerControlsDisabledAlt_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	*result = 0;
+
+	// If 0, check if it's disabled by calling mod
+	// If 1, ... by any mod (DisablePlayerControls*ALT* only)
+	// If 2, ... by any mod OR disabled by vanilla DisablePlayerControls
+	UInt32 disabledHow = 0;
+
+	UInt32 movementFlag = 1, pipboyFlag = 1, fightingFlag = 1, POVFlag = 1,
+		lookingFlag = 1, rolloverTextFlag = 1, sneakingFlag = 1;
+
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &disabledHow, &movementFlag, &pipboyFlag, &fightingFlag, &POVFlag,
+		&lookingFlag, &rolloverTextFlag, &sneakingFlag))
+	{
+		return true;
+	}
+
+	auto flagsToCheck = CondenseVanillaFlagArgs(movementFlag, pipboyFlag, fightingFlag, POVFlag,
+		lookingFlag, rolloverTextFlag, sneakingFlag);
+
+	ModID modId = scriptObj->GetOverridingModIdx();
+	Cmd_GetPlayerControlsDisabledAlt_Call(disabledHow, flagsToCheck, modId, result);
+	return true;
+}
+
+// Ex version simply extracts a bitfield instead of multiple args
+bool Cmd_GetPlayerControlsDisabledAltEx_Execute(COMMAND_ARGS)
+{
+	using namespace DisablePlayerControlsAlt;
+
+	UInt32 disabledHow = 0;
+	UInt32 flagsToCheck = DisablePlayerControlsAlt::kAllFlags;
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &disabledHow, &flagsToCheck))
+		return true;
+
+	ModID modId = scriptObj->GetOverridingModIdx();
+	Cmd_GetPlayerControlsDisabledAlt_Call(disabledHow, flagsToCheck, modId, result);
+	return true;
+}
